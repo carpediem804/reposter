@@ -30,12 +30,35 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env (never commit secrets)
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.production.local
 
-# vercel
+# vercel local metadata
 .vercel
+
+# build artifacts
+node_modules
+.next
+out
+dist
+*.log
+.DS_Store
+.supabase/*
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+supabase/.temp/
+supabase/.branches/
+supabase/.cache/
+supabase/.diff/
+supabase/**/*dump*.sql
+supabase/**/*.tar.gz
+
+# supabase migrations (keep private)
+supabase/migrations/*.sql
