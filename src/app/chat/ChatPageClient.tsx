@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ChatInterface from "@/components/ChatInterface";
 import ModelSelectorWrapper from "@/components/ModelSelectorWrapper";
@@ -113,7 +113,12 @@ export default function ChatPageClient({ initialMemos }: ChatPageClientProps) {
                   : new Date().toISOString(),
             };
           })
-          .filter((m) => m.content.trim().length > 0);
+          .filter((m) => {
+            if (m.role === "user") return m.content.trim().length > 0;
+            if (m.content.trim().length > 0) return true;
+            // assistant의 빈 응답 = 서버에서 아직 스트리밍 진행 중
+            return false;
+          });
 
         setSessionMessages(mapped);
       } else {
@@ -136,14 +141,21 @@ export default function ChatPageClient({ initialMemos }: ChatPageClientProps) {
     setMobileSheet(null);
   };
 
-  const handleSessionIdChangeFromStream = (newSessionId: string) => {
+  const pendingSessionIdRef = useRef<string | null>(null);
+
+  const handleSessionIdChangeFromStream = useCallback((newSessionId: string) => {
     if (!newSessionId) return;
-    // 스트리밍 중에 세션 ID만 업데이트 (URL은 history API로 조용히 반영)
-    // router.replace를 쓰면 searchParams가 바뀌어 세션 reload + abort가 발생하므로 사용 금지
-    setSelectedSessionId(newSessionId);
+    pendingSessionIdRef.current = newSessionId;
     window.history.replaceState(null, "", `/chat?session=${encodeURIComponent(newSessionId)}`);
     setSessionListRefreshKey((prev) => prev + 1);
-  };
+  }, []);
+
+  const handleStreamComplete = useCallback(() => {
+    if (pendingSessionIdRef.current) {
+      setSelectedSessionId(pendingSessionIdRef.current);
+      pendingSessionIdRef.current = null;
+    }
+  }, []);
 
   const handleNewChat = () => {
     setMobileSheet(null);
@@ -197,6 +209,7 @@ export default function ChatPageClient({ initialMemos }: ChatPageClientProps) {
             initialMessages={sessionMessages}
             sessionId={selectedSessionId}
             onSessionIdChange={handleSessionIdChangeFromStream}
+            onStreamComplete={handleStreamComplete}
             sessionInfo={sessionInfo}
           />
         </div>
@@ -263,6 +276,7 @@ export default function ChatPageClient({ initialMemos }: ChatPageClientProps) {
               initialMessages={sessionMessages}
               sessionId={selectedSessionId}
               onSessionIdChange={handleSessionIdChangeFromStream}
+              onStreamComplete={handleStreamComplete}
               sessionInfo={sessionInfo}
             />
           </div>

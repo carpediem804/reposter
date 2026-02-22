@@ -11,6 +11,7 @@ interface ChatInterfaceProps {
   initialMessages?: Message[];
   sessionId?: string | null;
   onSessionIdChange?: (sessionId: string) => void;
+  onStreamComplete?: () => void;
   sessionInfo?: { title: string; modelLabel: string } | null;
 }
 
@@ -19,6 +20,7 @@ export default function ChatInterface({
   initialMessages,
   sessionId,
   onSessionIdChange,
+  onStreamComplete,
   sessionInfo,
 }: ChatInterfaceProps) {
   const { selectedModel, setSelectedModel, pendingMemoForChat, setPendingMemoForChat } = useUIStore();
@@ -260,6 +262,7 @@ export default function ChatInterface({
                   );
                   setStreamingResponse("");
                   setIsLoading(false);
+                  onStreamComplete?.();
                 }
                 return;
               }
