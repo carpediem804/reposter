@@ -34,6 +34,8 @@ export default function ChatInterface({
   const [isAttachOpen, setIsAttachOpen] = useState(true);
   const [showPromptSuggestions, setShowPromptSuggestions] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const streamingContentRef = useRef("");
+  const assistantMsgIdRef = useRef<string | null>(null);
 
   // 초기 세션/메시지 주입
   useEffect(() => {
@@ -45,7 +47,20 @@ export default function ChatInterface({
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
+
+      // abort 시점까지 수신된 스트리밍 내용이 있으면 메시지에 보존
+      if (streamingContentRef.current && assistantMsgIdRef.current) {
+        const savedContent = streamingContentRef.current;
+        const savedId = assistantMsgIdRef.current;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === savedId ? { ...msg, content: savedContent } : msg
+          )
+        );
+      }
     }
+    streamingContentRef.current = "";
+    assistantMsgIdRef.current = null;
     setIsLoading(false);
     setStreamingResponse("");
     setInputMessage("");
@@ -206,8 +221,10 @@ export default function ChatInterface({
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      assistantMsgIdRef.current = assistantMessage.id;
 
       let fullStreamingContent = "";
+      streamingContentRef.current = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -226,10 +243,13 @@ export default function ChatInterface({
                 onSessionIdChange?.(data.sessionId);
               } else if (data.type === "content") {
                 fullStreamingContent += data.content;
+                streamingContentRef.current = fullStreamingContent;
                 if (!abortController.signal.aborted) {
                   setStreamingResponse(fullStreamingContent);
                 }
               } else if (data.type === "done") {
+                streamingContentRef.current = "";
+                assistantMsgIdRef.current = null;
                 if (!abortController.signal.aborted) {
                   setMessages((prev) =>
                     prev.map((msg) =>

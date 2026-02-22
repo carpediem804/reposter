@@ -136,11 +136,12 @@ export default function ChatPageClient({ initialMemos }: ChatPageClientProps) {
     setMobileSheet(null);
   };
 
-  const handleSessionIdChangeFromStream = (sessionId: string) => {
-    // 스트림 중에 세션이 생성/확정될 수 있으므로, 여기서 URL과 사이드바를 동기화
-    if (!sessionId) return;
-    setSelectedSessionId(sessionId);
-    router.replace(`/chat?session=${encodeURIComponent(sessionId)}`);
+  const handleSessionIdChangeFromStream = (newSessionId: string) => {
+    if (!newSessionId) return;
+    // 스트리밍 중에 세션 ID만 업데이트 (URL은 history API로 조용히 반영)
+    // router.replace를 쓰면 searchParams가 바뀌어 세션 reload + abort가 발생하므로 사용 금지
+    setSelectedSessionId(newSessionId);
+    window.history.replaceState(null, "", `/chat?session=${encodeURIComponent(newSessionId)}`);
     setSessionListRefreshKey((prev) => prev + 1);
   };
 
