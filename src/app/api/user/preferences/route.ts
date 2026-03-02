@@ -29,8 +29,21 @@ export async function GET() {
       );
     }
 
+    let premiumAllowed = false;
+    try {
+      const { data: p } = await supabase
+        .from("user_preferences")
+        .select("premium_allowed")
+        .eq("user_id", session.user.id)
+        .single();
+      if (p?.premium_allowed === true) premiumAllowed = true;
+    } catch {
+      // premium_allowed 컬럼이 없을 수 있음(마이그레이션 010 미적용)
+    }
+
     return NextResponse.json({
       defaultModelId: data?.default_model_id || null,
+      premiumAllowed,
     });
   } catch (error) {
     console.error("GET /api/user/preferences 오류:", error);

@@ -6,6 +6,7 @@ import {
   getOpenRouterModels,
   isCuratedModel,
   getCuratedOrder,
+  isPremiumModel,
 } from "@/lib/openrouter";
 
 const supabase = createClient(
@@ -33,10 +34,6 @@ function parseLimit(raw: string | null, fallback: number) {
   return Math.max(1, Math.min(50, Math.floor(n)));
 }
 
-function isLikelyFreeModelId(id: string) {
-  return id.includes(":free") || id.endsWith("-free");
-}
-
 async function syncCuratedModelsToDb() {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error("OPENROUTER_API_KEY가 설정되어 있지 않습니다");
@@ -47,16 +44,8 @@ async function syncCuratedModelsToDb() {
   const selected = raw
     .filter((m) => !!m?.id && !!m?.name && isCuratedModel(m.id))
     .map((m) => {
-      const prompt = Number(m.pricing?.prompt ?? "NaN");
-      const completion = Number(m.pricing?.completion ?? "NaN");
-      const isFree =
-        isLikelyFreeModelId(m.id) ||
-        (Number.isFinite(prompt) &&
-          Number.isFinite(completion) &&
-          prompt === 0 &&
-          completion === 0);
-
       const provider = m.id.includes("/") ? m.id.split("/")[0] : "unknown";
+      const isFree = !isPremiumModel(m.id);
 
       return {
         id: m.id,
@@ -66,7 +55,7 @@ async function syncCuratedModelsToDb() {
         pricing: {
           input: String(m.pricing?.prompt ?? ""),
           output: String(m.pricing?.completion ?? ""),
-          estimatedCost: isFree ? "무료" : "OpenRouter (변동)",
+          estimatedCost: isFree ? "저렴" : "OpenRouter (변동)",
         },
         features: [
           m.architecture?.modality ? `modality:${m.architecture.modality}` : "",

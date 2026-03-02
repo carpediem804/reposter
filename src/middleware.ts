@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
-export function middleware(request: NextRequest) {
-  // 기본적으로 요청을 그대로 통과
+export function middleware() {
   return NextResponse.next();
 }
 

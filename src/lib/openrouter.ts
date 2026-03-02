@@ -66,7 +66,7 @@ export async function callOpenRouterAPI(
     maxTokens?: number;
     temperature?: number;
     topP?: number;
-  } = {}
+  } = {},
 ): Promise<OpenRouterResponse> {
   try {
     const response = await fetch(
@@ -88,7 +88,7 @@ export async function callOpenRouterAPI(
           top_p: options.topP || 1,
           stream: false,
         }),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -104,47 +104,80 @@ export async function callOpenRouterAPI(
 }
 
 /**
- * 큐레이션된 유명 모델 목록.
- * OpenRouter 동기화 시 이 목록에 매칭되는 모델만 포함됩니다.
- * order 값이 작을수록 UI에서 위에 표시됩니다.
+ * 큐레이션된 무료 모델. (OpenRouter :free 는 테스트/불안정이라 비움 → 저렴 유료만 사용)
+ * 동기화 시 이 목록에 있는 모델만 DB에 포함됩니다.
  */
-export const CURATED_FREE_MODELS: { id: string; order: number }[] = [
-  { id: "deepseek/deepseek-r1-0528:free", order: 1 },
-  { id: "openai/gpt-oss-120b:free", order: 2 },
-  { id: "meta-llama/llama-3.3-70b-instruct:free", order: 3 },
-  { id: "nousresearch/hermes-3-llama-3.1-405b:free", order: 4 },
-  { id: "qwen/qwen3-coder:free", order: 5 },
-  { id: "mistralai/mistral-small-3.1-24b-instruct:free", order: 6 },
-  { id: "google/gemma-3-27b-it:free", order: 7 },
-  { id: "openai/gpt-oss-20b:free", order: 8 },
-];
+export const CURATED_FREE_MODELS: { id: string; order: number }[] = [];
 
+/**
+ * 큐레이션된 유료 모델. order 작을수록 UI 상단.
+ * 상단 = 엄청 싼/오래된 모델, 아래 = 고가(신청 후 사용).
+ */
 export const CURATED_PAID_MODELS: { id: string; order: number }[] = [
-  { id: "anthropic/claude-opus-4.6", order: 1 },
-  { id: "anthropic/claude-sonnet-4.6", order: 2 },
-  { id: "openai/gpt-4.1", order: 3 },
-  { id: "openai/o4-mini", order: 4 },
-  { id: "google/gemini-2.5-pro", order: 5 },
-  { id: "google/gemini-2.5-flash", order: 6 },
-  { id: "x-ai/grok-4", order: 7 },
-  { id: "x-ai/grok-3", order: 8 },
-  { id: "deepseek/deepseek-r1-0528", order: 9 },
-  { id: "openai/gpt-4.1-mini", order: 10 },
+  // === 신청 없이 쓸 수 있는 초저가 모델만 (아래 화이트리스트와 일치) ===
+  { id: "openai/gpt-3.5-turbo", order: 1 },
+  { id: "openai/gpt-4o-mini", order: 2 },
+  { id: "google/gemini-2.0-flash", order: 3 },
+  { id: "google/gemini-flash-1.5", order: 4 },
+  { id: "openai/gpt-4.1-mini", order: 6 },
+  // === Premium(신청·승인 후 사용) ===
+  { id: "google/gemini-2.5-flash", order: 11 },
+  { id: "anthropic/claude-sonnet-4.6", order: 12 },
+  { id: "anthropic/claude-opus-4.6", order: 13 },
+  { id: "openai/gpt-4.1", order: 14 },
+  { id: "openai/o4-mini", order: 15 },
+  { id: "google/gemini-2.5-pro", order: 16 },
+  { id: "x-ai/grok-4", order: 17 },
+  { id: "x-ai/grok-3", order: 18 },
 ];
 
-const ALL_CURATED_IDS = new Set([
-  ...CURATED_FREE_MODELS.map((m) => m.id),
-  ...CURATED_PAID_MODELS.map((m) => m.id),
-]);
+/**
+ * 신청 없이 쓸 수 있는 모델 접두사. OpenRouter가 버전 접미사(예: -2024-07-18)를 붙이므로 접두사로 비교.
+ */
+const ALLOWED_WITHOUT_PREMIUM_PREFIXES = [
+  "openai/gpt-3.5-turbo",
+  "openai/gpt-4o-mini",
+  "openai/gpt-4.1-mini",
+  "google/gemini-2.0-flash",
+  "google/gemini-flash-1.5",
+];
 
+/**
+ * 기본 추천 모델 접두사. 이 순서로 첫 번째로 존재하는 모델을 자동 선택.
+ */
+export const DEFAULT_MODEL_IDS: string[] = [
+  "openai/gpt-3.5-turbo",
+  "openai/gpt-4o-mini",
+  "openai/gpt-4.1-mini",
+  "google/gemini-2.0-flash",
+  "google/gemini-flash-1.5",
+];
+
+/** OpenRouter id가 접두사와 일치하는지 (버전 접미사 대응). */
+export function modelIdMatchesPrefix(modelId: string, prefix: string): boolean {
+  return modelId === prefix || modelId.startsWith(prefix + "-") || modelId.startsWith(prefix + ":");
+}
+
+/**
+ * Premium 모델 = 위 접두사에 해당하지 않으면 전부 Premium.
+ */
+export function isPremiumModel(modelId: string): boolean {
+  return !ALLOWED_WITHOUT_PREMIUM_PREFIXES.some((p) => modelIdMatchesPrefix(modelId, p));
+}
+
+/**
+ * OpenRouter id가 큐레이션 목록에 포함되는지. 접두사 매칭(버전 접미사 대응).
+ */
 export function isCuratedModel(modelId: string): boolean {
-  return ALL_CURATED_IDS.has(modelId);
+  const fromFree = CURATED_FREE_MODELS.some((m) => modelId === m.id || modelId.startsWith(m.id + "-") || modelId.startsWith(m.id + ":"));
+  if (fromFree) return true;
+  return CURATED_PAID_MODELS.some((m) => modelId === m.id || modelId.startsWith(m.id + "-") || modelId.startsWith(m.id + ":"));
 }
 
 export function getCuratedOrder(modelId: string): number {
-  const free = CURATED_FREE_MODELS.find((m) => m.id === modelId);
+  const free = CURATED_FREE_MODELS.find((m) => modelId === m.id || modelId.startsWith(m.id + "-") || modelId.startsWith(m.id + ":"));
   if (free) return free.order;
-  const paid = CURATED_PAID_MODELS.find((m) => m.id === modelId);
+  const paid = CURATED_PAID_MODELS.find((m) => modelId === m.id || modelId.startsWith(m.id + "-") || modelId.startsWith(m.id + ":"));
   if (paid) return paid.order;
   return 999;
 }

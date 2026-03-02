@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createClient } from "@supabase/supabase-js";
+import { isPremiumModel } from "@/lib/openrouter";
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -61,6 +63,20 @@ export async function POST(request: NextRequest) {
         { error: "유효하지 않은 모델입니다" },
         { status: 400 }
       );
+    }
+
+    if (isPremiumModel(modelId)) {
+      const { data: pref } = await supabase
+        .from("user_preferences")
+        .select("premium_allowed")
+        .eq("user_id", session.user.id)
+        .single();
+      if (pref?.premium_allowed !== true) {
+        return NextResponse.json(
+          { error: "Premium 모델은 사용 신청 후 승인된 경우에만 이용할 수 있습니다." },
+          { status: 403 }
+        );
+      }
     }
 
     // 선택된 메모들 가져오기

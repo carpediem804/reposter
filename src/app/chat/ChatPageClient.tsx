@@ -29,21 +29,7 @@ export default function ChatPageClient({ initialMemos }: ChatPageClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // URL에서 세션 ID 가져오기
-  useEffect(() => {
-    const sessionId = searchParams.get("session");
-    if (sessionId) {
-      setSelectedSessionId(sessionId);
-      loadSessionMessages(sessionId);
-    } else {
-      // 세션 파라미터가 없으면 새 대화 상태로
-      setSelectedSessionId(null);
-      setSessionMessages([]);
-      setSessionInfo(null);
-    }
-  }, [searchParams]);
-
-  const loadSessionMessages = async (sessionId: string) => {
+  const loadSessionMessages = useCallback(async (sessionId: string) => {
     try {
       const response = await fetch(`/api/chat/sessions/${sessionId}`);
       if (response.ok) {
@@ -125,12 +111,25 @@ export default function ChatPageClient({ initialMemos }: ChatPageClientProps) {
         setSessionMessages([]);
         setSessionInfo(null);
       }
-    } catch (error) {
-      console.error("세션 메시지 로드 오류:", error);
+    } catch (e) {
+      console.error("세션 메시지 로드 오류:", e);
       setSessionMessages([]);
       setSessionInfo(null);
     }
-  };
+  }, [setSelectedModel]);
+
+  // URL에서 세션 ID 가져오기
+  useEffect(() => {
+    const sessionId = searchParams.get("session");
+    if (sessionId) {
+      setSelectedSessionId(sessionId);
+      loadSessionMessages(sessionId);
+    } else {
+      setSelectedSessionId(null);
+      setSessionMessages([]);
+      setSessionInfo(null);
+    }
+  }, [searchParams, loadSessionMessages]);
 
   const handleSessionSelect = (sessionId: string) => {
     setSelectedSessionId(sessionId);

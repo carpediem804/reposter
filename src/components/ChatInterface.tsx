@@ -5,6 +5,7 @@ import TagPicker from "@/components/memo/TagPicker";
 import MemoChips from "@/components/memo/MemoChips";
 import CategoryBar from "@/components/memo/CategoryBar";
 import { useUIStore } from "@/store/ui.store";
+import { DEFAULT_MODEL_IDS, modelIdMatchesPrefix, isPremiumModel } from "@/lib/openrouter";
 
 interface ChatInterfaceProps {
   memos: Memo[];
@@ -168,7 +169,48 @@ export default function ChatInterface({
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || !selectedModel || isLoading) return;
+    if (!inputMessage.trim() || isLoading) return;
+
+    let model = selectedModel;
+    if (!model) {
+      try {
+        // 가능한 경우, 사용 가능한 모델 중에서 자동으로 하나 선택
+        const res = await fetch("/api/models?limit=50");
+        if (res.ok) {
+          const data = await res.json();
+          const allModels = Array.isArray(data.models) ? data.models : [];
+          // Premium 이 아닌(=저렴/허용) 모델만 우선
+          const cheapModels = allModels.filter(
+            (m: { id: string }) => !isPremiumModel(m.id)
+          );
+          const candidates = cheapModels.length > 0 ? cheapModels : allModels;
+          if (candidates.length > 0) {
+            const picked =
+              DEFAULT_MODEL_IDS.map((prefix) =>
+                candidates.find((m: { id: string }) =>
+                  modelIdMatchesPrefix(m.id, prefix)
+                )
+              ).find(Boolean) || candidates[0];
+            model = picked;
+            setSelectedModel(picked);
+            // 기본 모델로 저장
+            try {
+              await fetch("/api/user/preferences", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ defaultModelId: picked.id }),
+              });
+            } catch {
+              // 실패해도 채팅은 진행
+            }
+          }
+        }
+      } catch (e) {
+        console.error("자동 모델 선택 실패:", e);
+      }
+    }
+
+    if (!model) return;
 
     // 이전 스트리밍이 남아있다면 취소
     if (abortControllerRef.current) {
@@ -199,7 +241,7 @@ export default function ChatInterface({
         },
         body: JSON.stringify({
           message: inputMessage,
-          modelId: selectedModel.id,
+          modelId: model.id,
           selectedMemos,
           selectedTags,
           selectedCategories: activeCategories,
@@ -311,6 +353,106 @@ export default function ChatInterface({
     setSelectedTags([]);
   };
 
+  const renderMessageContent = (content: string, role: "user" | "assistant") => {
+    if (role === "user") {
+      return <div className="whitespace-pre-wrap text-sm">{content}</div>;
+    }
+
+    const lines = content.split("\n");
+    const elements: React.ReactNode[] = [];
+    let inCode = false;
+    let codeLines: string[] = [];
+
+    const flushCode = () => {
+      if (!inCode || codeLines.length === 0) return;
+      elements.push(
+        <pre
+          key={`code-${elements.length}`}
+          className="text-xs sm:text-sm bg-gray-900 text-gray-100 rounded-md px-3 py-2 overflow-x-auto"
+        >
+          <code>
+            {codeLines.join("\n")}
+          </code>
+        </pre>
+      );
+      inCode = false;
+      codeLines = [];
+    };
+
+    lines.forEach((line, idx) => {
+      if (line.trim().startsWith("```")) {
+        if (!inCode) {
+          inCode = true;
+        } else {
+          flushCode();
+        }
+        return;
+      }
+
+      if (inCode) {
+        codeLines.push(line);
+        return;
+      }
+
+      if (line.trim() === "---") {
+        elements.push(
+          <div
+            key={`sep-${idx}`}
+            className="border-t border-gray-200 my-2"
+          />
+        );
+        return;
+      }
+
+      if (line.startsWith("### ")) {
+        elements.push(
+          <div
+            key={`h3-${idx}`}
+            className="mt-2 mb-1 text-sm font-semibold text-gray-900"
+          >
+            {line.replace(/^###\s+/, "")}
+          </div>
+        );
+        return;
+      }
+
+      if (line.startsWith("- ")) {
+        elements.push(
+          <div
+            key={`li-${idx}`}
+            className="text-sm text-gray-800 flex gap-2"
+          >
+            <span className="mt-[3px] text-gray-500">•</span>
+            <span className="whitespace-pre-wrap">{line.slice(2)}</span>
+          </div>
+        );
+        return;
+      }
+
+      if (line.trim().length === 0) {
+        elements.push(<div key={`br-${idx}`} className="h-2" />);
+        return;
+      }
+
+      elements.push(
+        <div
+          key={`p-${idx}`}
+          className="text-sm text-gray-900 whitespace-pre-wrap"
+        >
+          {line}
+        </div>
+      );
+    });
+
+    flushCode();
+
+    if (elements.length === 0) {
+      return <div className="whitespace-pre-wrap text-sm">{content}</div>;
+    }
+
+    return <div className="space-y-1">{elements}</div>;
+  };
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-white rounded-lg shadow-sm border border-gray-200">
       {/* 메시지 영역 */}
@@ -402,7 +544,7 @@ export default function ChatInterface({
                     : "bg-gray-100 text-gray-900"
                 }`}
               >
-                <div className="whitespace-pre-wrap">{message.content}</div>
+                {renderMessageContent(message.content, message.role)}
               </div>
             </div>
           ))
@@ -412,9 +554,9 @@ export default function ChatInterface({
         {streamingResponse && (
           <div className="flex justify-start">
             <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100 text-gray-900">
-              <div className="whitespace-pre-wrap">
-                {streamingResponse}
-                <span className="animate-pulse">▋</span>
+              <div className="whitespace-pre-wrap text-sm">
+                {renderMessageContent(streamingResponse, "assistant")}
+                <span className="animate-pulse ml-1">▋</span>
               </div>
             </div>
           </div>
